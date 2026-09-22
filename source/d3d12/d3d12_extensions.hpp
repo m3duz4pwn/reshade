@@ -83,7 +83,7 @@ class D3D12Device;
 class DECLSPEC_UUID("5E3A2F71-6C0D-4B8E-9A41-2D7C8B6F0E93") D3D12InteropCommandQueue final : public ID3D12CommandQueue
 {
 public:
-	explicit D3D12InteropCommandQueue(ID3D12CommandQueue *original);
+	D3D12InteropCommandQueue(D3D12Device *device, ID3D12CommandQueue *original);
 	~D3D12InteropCommandQueue();
 
 	#pragma region IUnknown
@@ -114,6 +114,7 @@ public:
 	D3D12_COMMAND_QUEUE_DESC STDMETHODCALLTYPE GetDesc() override;
 	#pragma endregion
 
+	D3D12Device *const _device;
 	ID3D12CommandQueue *const _orig;
 	LONG _ref = 1;
 };

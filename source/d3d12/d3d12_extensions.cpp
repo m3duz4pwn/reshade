@@ -249,14 +249,18 @@ ID3D12CommandList *unwrap_command_list(ID3D12CommandList *command_list)
 	return command_list;
 }
 
-D3D12InteropCommandQueue::D3D12InteropCommandQueue(ID3D12CommandQueue *original) :
+D3D12InteropCommandQueue::D3D12InteropCommandQueue(D3D12Device *device, ID3D12CommandQueue *original) :
+	_device(device),
 	_orig(original)
 {
-	assert(_orig != nullptr);
+	assert(_device != nullptr && _orig != nullptr);
+
+	_device->AddRef();
 }
 D3D12InteropCommandQueue::~D3D12InteropCommandQueue()
 {
 	_orig->Release();
+	_device->Release();
 }
 
 HRESULT STDMETHODCALLTYPE D3D12InteropCommandQueue::QueryInterface(REFIID riid, void **ppvObj)
@@ -282,6 +286,13 @@ HRESULT STDMETHODCALLTYPE D3D12InteropCommandQueue::QueryInterface(REFIID riid, 
 		_orig->AddRef();
 		*ppvObj = _orig;
 		return S_OK;
+	}
+
+	// Refuse newer queue interfaces rather than hand out the original queue, which would bypass the command list unwrapping in 'ExecuteCommandLists'
+	if (riid == __uuidof(ID3D12CommandQueue1))
+	{
+		*ppvObj = nullptr;
+		return E_NOINTERFACE;
 	}
 
 	return _orig->QueryInterface(riid, ppvObj);
@@ -317,7 +328,8 @@ HRESULT STDMETHODCALLTYPE D3D12InteropCommandQueue::SetName(LPCWSTR Name)
 
 HRESULT STDMETHODCALLTYPE D3D12InteropCommandQueue::GetDevice(REFIID riid, void **ppvDevice)
 {
-	return _orig->GetDevice(riid, ppvDevice);
+	// Return the device proxy, so that interop interfaces queried from it are proxied too
+	return _device->QueryInterface(riid, ppvDevice);
 }
 
 void    STDMETHODCALLTYPE D3D12InteropCommandQueue::UpdateTileMappings(ID3D12Resource *pResource, UINT NumResourceRegions, const D3D12_TILED_RESOURCE_COORDINATE *pResourceRegionStartCoordinates, const D3D12_TILE_REGION_SIZE *pResourceRegionSizes, ID3D12Heap *pHeap, UINT NumRanges, const D3D12_TILE_RANGE_FLAGS *pRangeFlags, const UINT *pHeapRangeStartOffsets, const UINT *pRangeTileCounts, D3D12_TILE_MAPPING_FLAGS Flags)
@@ -508,7 +520,7 @@ HRESULT STDMETHODCALLTYPE D3D12DXVKInteropDevice::CreateInteropCommandQueue(cons
 	using function_type = HRESULT (STDMETHODCALLTYPE *)(IUnknown *, const D3D12_COMMAND_QUEUE_DESC *, UINT32, ID3D12CommandQueue **);
 	const HRESULT hr = interop_vtable_entry<function_type>(_orig, 14)(_orig, desc, vk_queue_family_index, queue);
 	if (SUCCEEDED(hr) && queue != nullptr && *queue != nullptr)
-		*queue = new D3D12InteropCommandQueue(*queue);
+		*queue = new D3D12InteropCommandQueue(_parent_device, *queue);
 	return hr;
 }
 HRESULT STDMETHODCALLTYPE D3D12DXVKInteropDevice::CreateInteropCommandAllocator(D3D12_COMMAND_LIST_TYPE type, UINT32 vk_queue_family_index, ID3D12CommandAllocator **allocator)

@@ -144,7 +144,12 @@ HRESULT STDMETHODCALLTYPE D3D12Device::QueryInterface(REFIID riid, void **ppvObj
 		riid == IID_ID3D12DXVKInteropDevice3)
 	{
 		if (_interop_device == nullptr)
-			_interop_device = new D3D12DXVKInteropDevice(this);
+		{
+			// Cannot take the adapter mutex here, since 'AddRef' in 'QueryInterface' below takes it too
+			const auto candidate = new D3D12DXVKInteropDevice(this);
+			if (InterlockedCompareExchangePointer(reinterpret_cast<void *volatile *>(&_interop_device), candidate, nullptr) != nullptr)
+				delete candidate;
+		}
 
 		return _interop_device->QueryInterface(riid, ppvObj);
 	}
